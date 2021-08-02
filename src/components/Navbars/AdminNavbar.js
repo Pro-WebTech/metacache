@@ -218,6 +218,14 @@ class AdminNavbar extends React.Component {
             }
             this_one.setState({ all_total: new_total });
             document.getElementById("cover-spin").style.display = "none";
+            document.getElementById("cover-spin").style.display = "none";
+            var elements = document.getElementsByClassName('input-header');
+              Array.prototype.slice.call(elements).forEach(function(el) {
+                el.value = '';
+              });
+              [...elements].forEach(el => {
+                el.value = '';
+            });
             
             // document.getElementsByClassName("input-header").style.display = "none";
           }

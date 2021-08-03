@@ -39,9 +39,31 @@
 
 }
 
-.input-header {
+.input-header, .input-m-percent, .my-scholar {
     font-weight: bolder;
     color:black;
     font-size: 16px
 
+}
+
+.imp_exp {
+    padding: 0;
+}
+.imp_exp:hover {
+    cursor: pointer;
+    color:slateblue;
+    font-weight: bold;
+}
+.reload {
+    border: blueviolet 1px solid;
+    border-radius: 3px;
+    margin-left: 4rem;
+    font-size: 12px;
+    color: blueviolet;
+    padding: 3px;
+}  
+
+.reload:hover {
+    font-weight: bolder;
+    cursor: pointer;
 }

@@ -1,7 +1,8 @@
 import React from "react";
 import axios from "axios";
 import Modal from "react-modal";
-import "assets/css/style-1.css"
+import "assets/css/style.css";
+import $ from "jquery";
 import {
   Input,
   InputGroup,
@@ -66,7 +67,6 @@ class AdminNavbar extends React.Component {
       index_now: ""
     };
   }
-
   handleChange = (e) => {
     this.setState({ ronin_address: e.target.value });
   };
@@ -94,7 +94,8 @@ class AdminNavbar extends React.Component {
     // Verify if the address is true
     let ronin = this.state.ronin_address;
     let n = ronin.search(/ronin:/i);
-    if (n === 0 && ronin.length === 46 &&
+    console.log(n, percent_manager)
+    if (n === 0  &&
       percent_manager > 0 &&
       101 > percent_manager &&
       this.state.name !== "" &&
@@ -180,7 +181,14 @@ class AdminNavbar extends React.Component {
 
 
             // Get the elo
-            let elo = response.data.leaderboard.elo;
+            let elo;
+            if (response.data.leaderboard == null) {
+              elo = 0
+            }
+            else {
+              elo = response.data.leaderboard.elo;
+            }
+            
 
             // Make array Data
             ronin = ronin.replace("0x", "ronin:")
@@ -218,7 +226,6 @@ class AdminNavbar extends React.Component {
             }
             this_one.setState({ all_total: new_total });
             document.getElementById("cover-spin").style.display = "none";
-            document.getElementById("cover-spin").style.display = "none";
             var elements = document.getElementsByClassName('input-header');
               Array.prototype.slice.call(elements).forEach(function(el) {
                 el.value = '';
@@ -248,6 +255,127 @@ class AdminNavbar extends React.Component {
     }
   }
 
+  reload() {
+    let data = this.state.data;
+    let this_one = this;
+    this.setState({scholar_count: 0});
+    document.getElementById("cover-spin").style.display = "inherit";
+
+    for (let index = 0; index < data.length; index++) {
+      let ronin = data[index].ronin.replace("ronin:", "0x");
+      
+      axios
+        .get('https://api.axie.management/v1/overview/' + ronin)
+        .then(function (response) {
+
+            // Calculate scholar count
+            this_one.setState({ scholar_count: index + 1 });
+
+            // Calculate total slp
+            const total_one = response.data.slp.total;
+            const tot_total_one = this_one.state.all_total.total - this_one.state.data[index].total + total_one;
+
+            // Calculate claimed slp
+            const claimed = response.data.slp.claimableTotal;
+            const tot_claimed = this_one.state.all_total.ronin_slp - this_one.state.data[index].ronin_slp + claimed;
+
+            // Calculate unclaimed slp
+            const unclaimed = total_one - claimed;
+            const tot_unclaimed = this_one.state.all_total.unclaimed - this_one.state.data[index].unclaimed + unclaimed;
+
+            // Calculate the last claimed date
+            const timestamp = response.data.slp.lastClaimedItemAt;
+            const oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
+            const today = new Date();
+            const last_date = new Date(timestamp * 1000);
+            const last_claimed_date = last_date.toLocaleDateString();
+
+            // // Calculate average slp 
+            const diffDays = Math.ceil(Math.abs((today - last_date + 1) / oneDay));
+            const avg_slp = Math.floor(unclaimed / diffDays);
+            const tot_avg_slp = this_one.state.all_total.tot_avg - this_one.state.data[index].avg + avg_slp;
+            const real_avg_slp = Math.floor(tot_avg_slp / (index + 1));
+
+            // Calculate manager
+            const manager = Math.round(total_one / 100 * this_one.state.data[index].percent_manager);
+            const tot_manager = this_one.state.all_total.manager - this_one.state.data[index].manager + manager;
+
+            // Calculate scholar
+            const scholar = total_one - manager;
+            const tot_scholar = this_one.state.all_total.scholar - this_one.state.data[index].scholar + scholar;
+
+            // Calculate today so far 
+            // if today so far is null, return "no result"
+            const today_so = response.data.slp.todaySoFar;
+            const tot_today_so = this_one.state.all_total.today_so - this_one.state.data[index].today_so + today_so;
+
+            // Calculate the next claim date
+            const next_date_ready = new Date(last_date.setDate(last_date.getDate() + 14));
+            const next_claim_date = next_date_ready.toLocaleDateString();
+
+            // Get the elo
+            var elo;
+            if (response.data.leaderboard == null) {
+              elo = 0
+            }
+            else {
+              elo = response.data.leaderboard.elo;
+            }
+
+            // Make array Data
+
+            const new_data = {
+              "name": this_one.state.data[index].name,
+              "ronin": this_one.state.data[index].ronin,
+              "avg": avg_slp,
+              "today_so": today_so,
+              "elo": elo,
+              "last_claim": last_claimed_date,
+              "next_claim": next_claim_date,
+              "unclaimed": unclaimed,
+              "ronin_slp": claimed,
+              "scholar": scholar,
+              "manager": manager,
+              "total": total_one,
+              "percent_manager": this_one.state.data[index].percent_manager
+            };
+            const last_data = this_one.state.data;
+            last_data[index] = new_data;
+            this_one.setState({ data: last_data });
+
+            // Total object for all values
+            const new_total = {
+              "avg": real_avg_slp,
+              "tot_avg": tot_avg_slp,
+              "today_so": tot_today_so,
+              "unclaimed": tot_unclaimed,
+              "ronin_slp": tot_claimed,
+              "scholar": tot_scholar,
+              "manager": tot_manager,
+              "total": tot_total_one
+            }
+            this_one.setState({ all_total: new_total });
+            if (index === data.length -1) {
+              document.getElementById("cover-spin").style.display = "none";
+
+            }
+            // document.getElementsByClassName("input-header").style.display = "none";
+        })
+        .catch(function (error) {
+          alert("No response!")
+          document.getElementById("cover-spin").style.display = "none";
+          var elements = document.getElementsByClassName('input-header');
+            Array.prototype.slice.call(elements).forEach(function(el) {
+              el.value = '';
+            });
+            [...elements].forEach(el => {
+              el.value = '';
+          });
+          console.log(error);
+        });     
+    }
+    console.log(this.state.data);
+  }
   edit_complete(e) {
     // Validation the input data
     let name = this.state.name_now;
@@ -393,7 +521,13 @@ class AdminNavbar extends React.Component {
 
 
                       // Get the elo
-                      let elo = response.data.leaderboard.elo;
+                      let elo;
+                      if (response.data.leaderboard == null) {
+                        elo = 0
+                      }
+                      else {
+                        elo = response.data.leaderboard.elo;
+                      }
 
                       // Make array Data
 
@@ -427,7 +561,7 @@ class AdminNavbar extends React.Component {
                         "manager": tot_manager,
                         "total": tot_total_one
                       }
-                      this_one.setState({ all_total: new_total });
+                      this_one.setState({ all_total: new_total, show: false });
                     }
                   })
                   .catch(function (error) {
@@ -567,7 +701,13 @@ class AdminNavbar extends React.Component {
 
 
                     // Get the elo
-                    let elo = response.data.leaderboard.elo;
+                    let elo;
+                    if (response.data.leaderboard == null) {
+                      elo = 0
+                    }
+                    else {
+                      elo = response.data.leaderboard.elo;
+                    }
 
                     // Make array Data
 
@@ -601,7 +741,7 @@ class AdminNavbar extends React.Component {
                       "manager": tot_manager,
                       "total": tot_total_one
                     }
-                    this_one.setState({ all_total: new_total });
+                    this_one.setState({ all_total: new_total,show: false });
                   }
                 })
                 .catch(function (error) {
@@ -718,14 +858,14 @@ class AdminNavbar extends React.Component {
                   </div>
                   <div className="mb-0 w-50 ml-5">
                     <InputGroup className="input-group-alternative w-80 pl-4" >
-                      <Input placeholder="Manager percentage" className="input-header"
+                      <Input placeholder="Manager percentage" className="input-m-percent"
                         type="number" max={100} min={1} onChange={this.handleScholar} />
                     </InputGroup>
                   </div>
                 </div>
                 <div className="mb-0 w-80 mt-2">
                   <InputGroup className="input-group-alternative w-100 pl-4" >
-                    <Input placeholder="Search" type="text" onChange={this.handleChange}
+                    <Input placeholder="Ronin Wallet" type="text" onChange={this.handleChange}
                       className="input-header" />
                   </InputGroup>
                 </div>
@@ -913,10 +1053,24 @@ class AdminNavbar extends React.Component {
             <Row>
               <div className="col">
                 <Card className="shadow">
-                  <CardHeader className="border-0">
-                    <h3 className="mb-0">My Scholars</h3>
-                  </CardHeader>
-                  <Table className="align-items-center table-flush" responsive>
+                  <div className="p-4 w-100 row" >
+                    <div className="col-md-10 col-sm-8">
+                      <span className="my-scholar">My Scholars</span>
+                      
+                      <span className="reload" onClick ={() => this.reload()}><i className="fas fa-redo-alt"></i> Reload</span>
+                    </div>
+                    <div className="col-md-2 col-sm-4 row">
+                      <Col className="imp_exp">
+                        <span className="pr-2"><i className="fas fa-file-export"></i></span>
+                        Export
+                      </Col>
+                      <Col className="imp_exp">
+                        <span  className="pr-2"><i className="fas fa-file-import"></i></span>
+                        Import
+                      </Col>
+                    </div>
+                  </div>
+                  <Table className="align-items-center table-flush tableSorter" responsive>
                     <thead className="thead-light">
                       <tr>
                         <th scope="col">Name</th>

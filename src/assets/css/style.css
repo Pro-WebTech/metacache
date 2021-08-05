@@ -67,3 +67,38 @@
     font-weight: bolder;
     cursor: pointer;
 }
+.bulbon {
+    color:greenyellow
+}
+.bulboff {
+    color: red
+}
+.serverbar {
+    width: 150px;
+    position: fixed;
+    right: 50px;
+    top: 20px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border: solid 2px greenyellow;
+    align-items: center;
+    border-radius: 20px;
+}
+
+.serverbar1 {
+    width: 150px;
+    position: fixed;
+    right: 50px;
+    top: 20px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border: solid 2px red;
+    align-items: center;
+    border-radius: 20px;
+}
+.serveron-text{
+    color: rgba(255, 255, 255, 0.952);
+    margin-left: 10px;
+    font-weight: bolder;
+
+}

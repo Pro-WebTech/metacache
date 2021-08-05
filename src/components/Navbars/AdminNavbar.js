@@ -2,7 +2,8 @@ import React from "react";
 import axios from "axios";
 import Modal from "react-modal";
 import "assets/css/style.css";
-import $ from "jquery";
+import { SampleData } from "./sample_scholar";
+import fs from 'browserify-fs';
 import {
   Input,
   InputGroup,
@@ -19,6 +20,7 @@ import {
   Table,
 
 } from "reactstrap";
+import { isEmptyObject } from "jquery";
 
 Modal.setAppElement("#root");
 
@@ -35,6 +37,7 @@ const customStyles = {
   },
 };
 
+
 class AdminNavbar extends React.Component {
   constructor(props) {
     super(props);
@@ -43,8 +46,11 @@ class AdminNavbar extends React.Component {
     this.handleName = this.handleName.bind(this)
     this.state = {
       data: [],
+      server_statue: true,
       name_group: [],
       ronin_address_group: [],
+      export_num: 0,
+      ready_start: false,
       all_total:
       {
         "avg": 0,
@@ -67,6 +73,156 @@ class AdminNavbar extends React.Component {
       index_now: ""
     };
   }
+  know_server() {
+    let status_number=0;
+    let count = 0;
+    let this_one =  this;
+    document.getElementById("cover-spin").style.display = "inherit";
+    for (let index = 0; index < SampleData.length; index++) {
+      axios
+        .get('https://api.axie.management/v1/overview/' + SampleData[index].ronin)
+        .then(function (response) {
+          count++;
+          if (isEmptyObject(!response.data)) {
+            status_number++;
+          }
+          if (count === 10 && status_number < 3) {
+            this_one.setState({server_statue: false});
+          }
+        })
+        .catch(function (error) {
+        });     
+    }
+  }
+  
+  async componentDidMount(){
+    this.know_server();
+    let this_one = this;
+    
+    const db_data = (await axios.get('http://localhost:3001/')).data;
+    if (db_data.length !== 0 ) {
+      for (let index = 0; index < db_data.length; index++) {
+        let ronin = db_data[index].ronin.replace("ronin:", "0x");
+        const response = (await axios.get('https://api.axie.management/v1/overview/' + ronin));
+        // Calculate scholar count
+        this_one.setState({ scholar_count: index + 1 });
+          
+        // Add name to the name_group
+        let new_name = db_data[index].name;
+        this_one.setState(state => {
+          const name_group = state.name_group.concat(new_name);
+          return {
+            name_group
+          };
+        });
+
+        // Add ronin_address to the ronin_address_group
+        let new_ronin_address = db_data[index].ronin;
+        this_one.setState(state => {
+          const ronin_address_group = state.ronin_address_group.concat(new_ronin_address);
+          return {
+            ronin_address_group
+          };
+        });
+
+        // Calculate total slp
+        const total_one = response.data.slp.total;
+        const tot_total_one = this_one.state.all_total.total + total_one;
+
+        // Calculate claimed slp
+        const claimed = response.data.slp.claimableTotal;
+        const tot_claimed = this_one.state.all_total.ronin_slp + claimed;
+
+        // Calculate unclaimed slp
+        const unclaimed = total_one - claimed;
+        const tot_unclaimed = this_one.state.all_total.unclaimed + unclaimed;
+
+        // Calculate the last claimed date
+        const timestamp = response.data.slp.lastClaimedItemAt;
+        const oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
+        const today = new Date();
+        const last_date = new Date(timestamp * 1000);
+        const last_claimed_date = last_date.toLocaleDateString();
+
+        // // Calculate average slp 
+        const diffDays = Math.ceil(Math.abs((today - last_date + 1) / oneDay));
+        const avg_slp = Math.floor(unclaimed / diffDays);
+        const tot_avg_slp = this_one.state.all_total.tot_avg + avg_slp;
+        const real_avg_slp = Math.floor(tot_avg_slp / (index + 1));
+
+        // Calculate manager
+        const manager = Math.round(total_one / 100 * db_data[index].percent_manager);
+        const tot_manager = this_one.state.all_total.manager + manager;
+
+        // Calculate scholar
+        const scholar = total_one - manager;
+        const tot_scholar = this_one.state.all_total.scholar + scholar;
+
+        // Calculate today so far 
+        // if today so far is null, return "no result"
+        const today_so = response.data.slp.todaySoFar;
+        const tot_today_so = this_one.state.all_total.today_so + today_so;
+
+        // Calculate the next claim date
+        const next_date_ready = new Date(last_date.setDate(last_date.getDate() + 14));
+        const next_claim_date = next_date_ready.toLocaleDateString();
+
+        // Get the elo
+        var elo;
+        if (response.data.leaderboard == null) {
+          elo = 0
+        }
+        else {
+          elo = response.data.leaderboard.elo;
+        }
+
+        // Make array Data
+
+        const new_data = {
+          "name": db_data[index].name,
+          "ronin": db_data[index].ronin,
+          "avg": avg_slp,
+          "today_so": today_so,
+          "elo": elo,
+          "last_claim": last_claimed_date,
+          "next_claim": next_claim_date,
+          "unclaimed": unclaimed,
+          "ronin_slp": claimed,
+          "scholar": scholar,
+          "manager": manager,
+          "total": total_one,
+          "percent_manager": db_data[index].percent_manager
+        };
+
+        this_one.setState(state => {
+          const data = state.data.concat(new_data);
+          return { data };
+        });
+
+        // Total object for all values
+        const new_total = {
+          "avg": real_avg_slp,
+          "tot_avg": tot_avg_slp,
+          "today_so": tot_today_so,
+          "unclaimed": tot_unclaimed,
+          "ronin_slp": tot_claimed,
+          "scholar": tot_scholar,
+          "manager": tot_manager,
+          "total": tot_total_one
+        }
+        this_one.setState({ all_total: new_total });
+        if (index === db_data.length -1) {
+          document.getElementById("cover-spin").style.display = "none";
+
+        }
+      }
+    }
+    else {
+      document.getElementById("cover-spin").style.display = "none";
+
+    }
+  }
+  
   handleChange = (e) => {
     this.setState({ ronin_address: e.target.value });
   };
@@ -76,6 +232,7 @@ class AdminNavbar extends React.Component {
   handleName = (e) => {
     this.setState({ name: e.target.value });
   };
+
   cg_name = (e) => {
     this.setState({ name_now: e.target.value });
   };
@@ -110,6 +267,8 @@ class AdminNavbar extends React.Component {
         .then(function (response) {
           if (response.data.slp.lastClaimedItemAt === 0) {
             alert("Wrong input data! Try again")
+            document.getElementById("cover-spin").style.display = "none";
+
           }
           else {
             // Add name to the name_group
@@ -129,6 +288,8 @@ class AdminNavbar extends React.Component {
                 ronin_address_group
               };
             });
+
+            
 
             // Calculate scholar count
             let scholar_count = this_one.state.scholar_count + 1;
@@ -193,6 +354,12 @@ class AdminNavbar extends React.Component {
             // Make array Data
             ronin = ronin.replace("0x", "ronin:")
 
+            axios 
+              .post('http://localhost:3001/add-new', { name: new_name, ronin: ronin, percent_manager: percent_manager})
+              .then(function (response) {
+                alert(response.data);
+              })
+
             let new_data = {
               "name": new_name,
               "ronin": ronin,
@@ -255,18 +422,20 @@ class AdminNavbar extends React.Component {
     }
   }
 
-  reload() {
+  async reload() {
     let data = this.state.data;
     let this_one = this;
     this.setState({scholar_count: 0});
-    document.getElementById("cover-spin").style.display = "inherit";
-
+    if (data.length !== 0) {
+      document.getElementById("cover-spin").style.display = "inherit";
+    }
     for (let index = 0; index < data.length; index++) {
       let ronin = data[index].ronin.replace("ronin:", "0x");
       
-      axios
+      await axios
         .get('https://api.axie.management/v1/overview/' + ronin)
         .then(function (response) {
+
 
             // Calculate scholar count
             this_one.setState({ scholar_count: index + 1 });
@@ -384,376 +553,152 @@ class AdminNavbar extends React.Component {
     let name_state = (name === this.state.data[e].name);
     let ronin_state = (ronin === this.state.data[e].ronin);
     let manager_p_state = (manager_p === this.state.data[e].percent_manager);
+    let n = ronin.search(/ronin:/i);
 
     // Validation not changed
     if (name_state && ronin_state && manager_p_state) {
       this.setState({ show: false });
     }
     // Validation empty fields
-    else if (name === "" || ronin === "" || manager_p === "") {
+    if (name === "" || ronin === "" || manager_p === "") {
       alert("Not allowed the empty input");
     }
     // Validation if changed name is included in name_group(Only name changed)
-    else if (!name_state) {
-      if (this.state.name_group.includes(name)) {
+    if (!name_state && this.state.name_group.includes(name)) {
         alert("This name already exists")
-      }
-      else {
-        if (ronin_state) {
-          if (manager_p > 0 && manager_p < 101 && Number.isInteger(Number(manager_p))) {
-            alert("Right percent")
-            let new_manager = Math.round(this.state.data[e].total * manager_p / 100);
-            let new_scholar = this.state.data[e].total - new_manager;
-            let new_total = {
-              "avg": this.state.all_total.avg,
-              "tot_avg": this.state.all_total.tot_avg,
-              "today_so": this.state.all_total.today_so,
-              "unclaimed": this.state.all_total.unclaimed,
-              "ronin_slp": this.state.all_total.ronin_slp,
-              "scholar": this.state.all_total.scholar - this.state.data[e].scholar + new_scholar,
-              "manager": this.state.all_total.manager - this.state.data[e].manager + new_manager,
-              "total": this.state.all_total.total
+    }
+    else if (n !== 0 || ronin.length !== 46) {
+      alert("Wrong ronin address")
+    }
+    else if (!ronin_state && this.state.ronin_address_group.includes(ronin)) {
+      alert("This ronin address already exists")
+    }
+    else if (manager_p > 0 && manager_p < 101 && Number.isInteger(Number(manager_p))) {
+      ronin = ronin.replace("ronin:", "0x");
+      let this_one = this;
+      let scholar_count = this.state.scholar_count;
+      axios
+        .get('https://api.axie.management/v1/overview/' + ronin)
+        .then(function (response) {
+          if (response.data.slp.lastClaimedItemAt === 0) {
+            alert("Wrong input data! Try again")
+          }
+          else {
+            console.log(response.data);
+            document.getElementById("cover-spin").style.display = "inherit";
+
+            // Add name to the name_group
+            let name_group = this_one.state.name_group;
+            name_group[e] = name;
+            this_one.setState({ name_group: name_group });
+
+            // Add ronin_address to the ronin_address_group
+            ronin = ronin.replace("0x", "ronin:")
+            console.log(name, this_one.state.data[e].name);
+            axios.post("http://localhost:3001/edit-ronin/", {name: name, ronin: ronin, percent: manager_p, old_name: this_one.state.data[e].name})
+                  .then(function (response) {
+                    console.log(response)
+                  })
+            let ronin_address_group = this_one.state.ronin_address_group;
+            ronin_address_group[e] = ronin;
+            this_one.setState({ ronin_address_group: ronin_address_group });
+            console.log(name_group, ronin_address_group);
+
+            // Calculate total slp
+            let total_one = response.data.slp.total;
+            let tot_total_one = this_one.state.all_total.total - this_one.state.data[e].total + total_one;
+
+            // Calculate claimed slp
+            let claimed = response.data.slp.claimableTotal;
+            let tot_claimed = this_one.state.all_total.ronin_slp - this_one.state.data[e].ronin_slp + claimed;
+
+            // Calculate unclaimed slp
+            let unclaimed = total_one - claimed;
+            let tot_unclaimed = this_one.state.all_total.unclaimed - this_one.state.data[e].unclaimed + unclaimed;
+
+            // Calculate the last claimed date
+            let timestamp = response.data.slp.lastClaimedItemAt;
+            let oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
+            let today = new Date();
+            let last_date = new Date(timestamp * 1000);
+            let last_claimed_date = last_date.toLocaleDateString();
+
+            // Calculate average slp 
+            let diffDays = Math.ceil(Math.abs((today - last_date + 1) / oneDay));
+            let avg_slp = Math.floor(unclaimed / diffDays);
+            let tot_avg_slp = this_one.state.all_total.tot_avg - this_one.state.data[e].avg + avg_slp;
+            let real_avg_slp = Math.floor(tot_avg_slp / scholar_count);
+
+            // Calculate manager
+            let manager = Math.round(total_one / 100 * manager_p);
+            let tot_manager = this_one.state.all_total.manager - this_one.state.data[e].manager + manager;
+
+            // Calculate scholar
+            let scholar = total_one - manager;
+            let tot_scholar = this_one.state.all_total.scholar - this_one.state.data[e].scholar + scholar;
+
+            // Calculate today so far 
+            // if today so far is null, return "no result"
+            let today_so = response.data.slp.todaySoFar;
+            let tot_today_so = this_one.state.all_total.today_so - this_one.state.data[e].today_so + today_so;
+
+            // Calculate the next claim date
+            let next_date_ready = new Date(last_date.setDate(last_date.getDate() + 14));
+            let next_claim_date = next_date_ready.toLocaleDateString();
+
+
+            // Get the elo
+            let elo;
+            if (response.data.leaderboard == null) {
+              elo = 0
             }
-            this.setState({ all_total: new_total });
-            let new_element = {
+            else {
+              elo = response.data.leaderboard.elo;
+            }
+
+            // Make array Data
+
+            let new_data = {
               "name": name,
-              "ronin": this.state.data[e].ronin,
-              "avg": this.state.data[e].avg,
-              "today_so": this.state.data[e].today_so,
-              "elo": this.state.data[e].elo,
-              "last_claim": this.state.data[e].last_claim,
-              "next_claim": this.state.data[e].next_claim,
-              "unclaimed": this.state.data[e].unclaimed,
-              "ronin_slp": this.state.data[e].ronin_slp,
-              "scholar": new_scholar,
-              "manager": new_manager,
-              "total": this.state.data[e].total,
+              "ronin": ronin,
+              "avg": avg_slp,
+              "today_so": today_so,
+              "elo": elo,
+              "last_claim": last_claimed_date,
+              "next_claim": next_claim_date,
+              "unclaimed": unclaimed,
+              "ronin_slp": claimed,
+              "scholar": scholar,
+              "manager": manager,
+              "total": total_one,
               "percent_manager": manager_p
             };
-            let new_data = this.state.data;
-            new_data[e] = new_element;
+            let last_data = this_one.state.data;
+            last_data[e] = new_data;
+            this_one.setState({ data: last_data });
 
-            let name_group = this.state.name_group;
-            name_group[e] = name;
-            this.setState({ data: new_data, name_group: name_group, show: false });
-          }
-          else {
-            alert("Wrong percent")
-          }
-        }
-        else {
-          // Validation ronin address
-          let n = ronin.search(/ronin:/i);
-          if (n !== 0 || ronin.length !== 46) {
-            alert("Wrong ronin address")
-          }
-          else {
-            if (this.state.ronin_address_group.includes(ronin)) {
-              alert("This ronin address already exists")
+            // Total object for all values
+            let new_total = {
+              "avg": real_avg_slp,
+              "tot_avg": tot_avg_slp,
+              "today_so": tot_today_so,
+              "unclaimed": tot_unclaimed,
+              "ronin_slp": tot_claimed,
+              "scholar": tot_scholar,
+              "manager": tot_manager,
+              "total": tot_total_one
             }
-            else {
-              // Validation percent range
+            this_one.setState({ all_total: new_total,show: false });
+            document.getElementById("cover-spin").style.display = "none";
 
-              if (manager_p > 0 && manager_p < 101 && Number.isInteger(Number(manager_p))) {
-                alert("Right percent");
-                ronin = ronin.replace("ronin:", "0x");
-                let this_one = this;
-                let scholar_count = this.state.scholar_count;
-                axios
-                  .get('https://api.axie.management/v1/overview/' + ronin)
-                  .then(function (response) {
-                    if (response.data.slp.lastClaimedItemAt === 0) {
-                      alert("Wrong input data! Try again")
-                    }
-                    else {
-                      // Add name to the name_group
-                      let name_group = this_one.state.name_group;
-                      name_group[e] = name;
-                      this_one.setState({ name_group: name_group });
-
-                      // Add ronin_address to the ronin_address_group
-                      ronin = ronin.replace("0x", "ronin:")
-                      let ronin_address_group = this_one.state.ronin_address_group;
-                      ronin_address_group[e] = ronin;
-                      this_one.setState({ ronin_address_group: ronin_address_group });
-
-                      // Calculate total slp
-                      let total_one = response.data.slp.total;
-                      let tot_total_one = this_one.state.all_total.total - this_one.state.data[e].total + total_one;
-
-                      // Calculate claimed slp
-                      let claimed = response.data.slp.claimableTotal;
-                      let tot_claimed = this_one.state.all_total.ronin_slp - this_one.state.data[e].ronin_slp + claimed;
-
-                      // Calculate unclaimed slp
-                      let unclaimed = total_one - claimed;
-                      let tot_unclaimed = this_one.state.all_total.unclaimed - this_one.state.data[e].unclaimed + unclaimed;
-
-                      // Calculate the last claimed date
-                      let timestamp = response.data.slp.lastClaimedItemAt;
-                      let oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
-                      let today = new Date();
-                      let last_date = new Date(timestamp * 1000);
-                      let last_claimed_date = last_date.toLocaleDateString();
-
-                      // Calculate average slp 
-                      let diffDays = Math.ceil(Math.abs((today - last_date + 1) / oneDay));
-                      let avg_slp = Math.floor(unclaimed / diffDays);
-                      let tot_avg_slp = this_one.state.all_total.tot_avg - this_one.state.data[e].avg + avg_slp;
-                      let real_avg_slp = Math.floor(tot_avg_slp / scholar_count);
-
-                      // Calculate manager
-                      let manager = Math.round(total_one / 100 * manager_p);
-                      let tot_manager = this_one.state.all_total.manager - this_one.state.data[e].manager + manager;
-
-                      // Calculate scholar
-                      let scholar = total_one - manager;
-                      let tot_scholar = this_one.state.all_total.scholar - this_one.state.data[e].scholar + scholar;
-
-                      // Calculate today so far 
-                      // if today so far is null, return "no result"
-                      let today_so = response.data.slp.todaySoFar;
-                      let tot_today_so = this_one.state.all_total.today_so - this_one.state.data[e].today_so + today_so;
-
-                      // Calculate the next claim date
-                      let next_date_ready = new Date(last_date.setDate(last_date.getDate() + 14));
-                      let next_claim_date = next_date_ready.toLocaleDateString();
-
-
-                      // Get the elo
-                      let elo;
-                      if (response.data.leaderboard == null) {
-                        elo = 0
-                      }
-                      else {
-                        elo = response.data.leaderboard.elo;
-                      }
-
-                      // Make array Data
-
-                      let new_data = {
-                        "name": name,
-                        "ronin": ronin,
-                        "avg": avg_slp,
-                        "today_so": today_so,
-                        "elo": elo,
-                        "last_claim": last_claimed_date,
-                        "next_claim": next_claim_date,
-                        "unclaimed": unclaimed,
-                        "ronin_slp": claimed,
-                        "scholar": scholar,
-                        "manager": manager,
-                        "total": total_one,
-                        "percent_manager": manager_p
-                      };
-                      let last_data = this_one.state.data;
-                      last_data[e] = new_data;
-                      this_one.setState({ data: last_data });
-
-                      // Total object for all values
-                      let new_total = {
-                        "avg": real_avg_slp,
-                        "tot_avg": tot_avg_slp,
-                        "today_so": tot_today_so,
-                        "unclaimed": tot_unclaimed,
-                        "ronin_slp": tot_claimed,
-                        "scholar": tot_scholar,
-                        "manager": tot_manager,
-                        "total": tot_total_one
-                      }
-                      this_one.setState({ all_total: new_total, show: false });
-                    }
-                  })
-                  .catch(function (error) {
-                    console.log(error);
-                  });
-              }
-              else {
-                alert("Wrong percent")
-              }
-            }
           }
-        }
-      }
+        })
+        .catch(function (error) {
+          console.log(error);
+        });
     }
     else {
-      if (ronin_state) {
-        if (manager_p > 0 && manager_p < 101 && Number.isInteger(Number(manager_p))) {
-          alert("Right percent")
-          let new_manager = Math.round(this.state.data[e].total * manager_p / 100);
-          let new_scholar = this.state.data[e].total - new_manager;
-          let new_total = {
-            "avg": this.state.all_total.avg,
-            "tot_avg": this.state.all_total.tot_avg,
-            "today_so": this.state.all_total.today_so,
-            "unclaimed": this.state.all_total.unclaimed,
-            "ronin_slp": this.state.all_total.ronin_slp,
-            "scholar": this.state.all_total.scholar - this.state.data[e].scholar + new_scholar,
-            "manager": this.state.all_total.manager - this.state.data[e].manager + new_manager,
-            "total": this.state.all_total.total
-          }
-          this.setState({ all_total: new_total });
-          let new_element = {
-            "name": name,
-            "ronin": this.state.data[e].ronin,
-            "avg": this.state.data[e].avg,
-            "today_so": this.state.data[e].today_so,
-            "elo": this.state.data[e].elo,
-            "last_claim": this.state.data[e].last_claim,
-            "next_claim": this.state.data[e].next_claim,
-            "unclaimed": this.state.data[e].unclaimed,
-            "ronin_slp": this.state.data[e].ronin_slp,
-            "scholar": new_scholar,
-            "manager": new_manager,
-            "total": this.state.data[e].total,
-            "percent_manager": manager_p
-          };
-          let new_data = this.state.data;
-          new_data[e] = new_element;
-
-          let name_group = this.state.name_group;
-          name_group[e] = name;
-          this.setState({ data: new_data, name_group: name_group, show: false });
-        }
-        else {
-          alert("Wrong percent")
-        }
-      }
-      else {
-        // Validation ronin address
-        let n = ronin.search(/ronin:/i);
-        if (n !== 0 || ronin.length !== 46) {
-          alert("Wrong ronin address")
-        }
-        else {
-          if (this.state.ronin_address_group.includes(ronin)) {
-            alert("This ronin address already exists")
-          }
-          else {
-            // Validation percent range
-
-            if (manager_p > 0 && manager_p < 101 && Number.isInteger(Number(manager_p))) {
-              alert("Right percent");
-              ronin = ronin.replace("ronin:", "0x");
-              let this_one = this;
-              let scholar_count = this.state.scholar_count;
-              axios
-                .get('https://api.axie.management/v1/overview/' + ronin)
-                .then(function (response) {
-                  if (response.data.slp.lastClaimedItemAt === 0) {
-                    alert("Wrong input data! Try again")
-                  }
-                  else {
-                    console.log(response.data);
-                    // Add name to the name_group
-                    let name_group = this_one.state.name_group;
-                    name_group[e] = name;
-                    this_one.setState({ name_group: name_group });
-
-                    // Add ronin_address to the ronin_address_group
-                    ronin = ronin.replace("0x", "ronin:")
-                    let ronin_address_group = this_one.state.ronin_address_group;
-                    ronin_address_group[e] = ronin;
-                    this_one.setState({ ronin_address_group: ronin_address_group });
-                    console.log(name_group, ronin_address_group);
-
-                    // Calculate total slp
-                    let total_one = response.data.slp.total;
-                    let tot_total_one = this_one.state.all_total.total - this_one.state.data[e].total + total_one;
-
-                    // Calculate claimed slp
-                    let claimed = response.data.slp.claimableTotal;
-                    let tot_claimed = this_one.state.all_total.ronin_slp - this_one.state.data[e].ronin_slp + claimed;
-
-                    // Calculate unclaimed slp
-                    let unclaimed = total_one - claimed;
-                    let tot_unclaimed = this_one.state.all_total.unclaimed - this_one.state.data[e].unclaimed + unclaimed;
-
-                    // Calculate the last claimed date
-                    let timestamp = response.data.slp.lastClaimedItemAt;
-                    let oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
-                    let today = new Date();
-                    let last_date = new Date(timestamp * 1000);
-                    let last_claimed_date = last_date.toLocaleDateString();
-
-                    // Calculate average slp 
-                    let diffDays = Math.ceil(Math.abs((today - last_date + 1) / oneDay));
-                    let avg_slp = Math.floor(unclaimed / diffDays);
-                    let tot_avg_slp = this_one.state.all_total.tot_avg - this_one.state.data[e].avg + avg_slp;
-                    let real_avg_slp = Math.floor(tot_avg_slp / scholar_count);
-
-                    // Calculate manager
-                    let manager = Math.round(total_one / 100 * manager_p);
-                    let tot_manager = this_one.state.all_total.manager - this_one.state.data[e].manager + manager;
-
-                    // Calculate scholar
-                    let scholar = total_one - manager;
-                    let tot_scholar = this_one.state.all_total.scholar - this_one.state.data[e].scholar + scholar;
-
-                    // Calculate today so far 
-                    // if today so far is null, return "no result"
-                    let today_so = response.data.slp.todaySoFar;
-                    let tot_today_so = this_one.state.all_total.today_so - this_one.state.data[e].today_so + today_so;
-
-                    // Calculate the next claim date
-                    let next_date_ready = new Date(last_date.setDate(last_date.getDate() + 14));
-                    let next_claim_date = next_date_ready.toLocaleDateString();
-
-
-                    // Get the elo
-                    let elo;
-                    if (response.data.leaderboard == null) {
-                      elo = 0
-                    }
-                    else {
-                      elo = response.data.leaderboard.elo;
-                    }
-
-                    // Make array Data
-
-                    let new_data = {
-                      "name": name,
-                      "ronin": ronin,
-                      "avg": avg_slp,
-                      "today_so": today_so,
-                      "elo": elo,
-                      "last_claim": last_claimed_date,
-                      "next_claim": next_claim_date,
-                      "unclaimed": unclaimed,
-                      "ronin_slp": claimed,
-                      "scholar": scholar,
-                      "manager": manager,
-                      "total": total_one,
-                      "percent_manager": manager_p
-                    };
-                    let last_data = this_one.state.data;
-                    last_data[e] = new_data;
-                    this_one.setState({ data: last_data });
-
-                    // Total object for all values
-                    let new_total = {
-                      "avg": real_avg_slp,
-                      "tot_avg": tot_avg_slp,
-                      "today_so": tot_today_so,
-                      "unclaimed": tot_unclaimed,
-                      "ronin_slp": tot_claimed,
-                      "scholar": tot_scholar,
-                      "manager": tot_manager,
-                      "total": tot_total_one
-                    }
-                    this_one.setState({ all_total: new_total,show: false });
-                  }
-                })
-                .catch(function (error) {
-                  console.log(error);
-                });
-            }
-            else {
-              alert("Wrong percent")
-            }
-          }
-        }
-      }
+      alert("Wrong percent")
     }
   }
   edit_one(e) {
@@ -768,7 +713,11 @@ class AdminNavbar extends React.Component {
   delete_one(e) {
     // Catch the whole data from state
     let data = this.state.data;
-
+    axios.post('http://localhost:3001/delete-user',{name: data[e].name})
+         .then(function (response) {
+           alert(response.data);
+         })
+    console.log(data[e].name);
     // Catch ronin_address_group, name_group and Update them
     let ronin_address_group = this.state.ronin_address_group;
     ronin_address_group.splice(e, 1);
@@ -816,8 +765,32 @@ class AdminNavbar extends React.Component {
     this.setState({ scholar_count: scholar_count - 1 });
     this.setState({ data: data });
   }
+
+  export() {
+    var data = this.state.data;
+    var list = [];
+    console.log(data);
+    data.map((object, index) => {
+      list.push({
+        managerShare: object.percent_manager,
+        eth: object.ronin,
+        name: object.name
+      })
+    })
+    var json_data = JSON.stringify(list, null, 2);
+    console.log(json_data);
+    const aTag = document.createElement('a');
+    aTag.href = list;
+    aTag.download = "axie.management.export."+ new Date().getUTCMilliseconds();
+    let event = new MouseEvent('click');
+    aTag.dispatchEvent(event);
+    // fs.writeFile("axie.management.export"+ new Date().getUTCMilliseconds(), json_data, (err) => {
+    //   if (err) throw err;
+    //   console.log('Data written to file');
+    // });
+  }
   render() {
-    const table_data = this.state.data.map((anObjectMapped, index) => {
+    var table_data = this.state.data.map((anObjectMapped, index) => {
       return (
         <tr key={index}>
           <td>{anObjectMapped.name}</td>
@@ -869,8 +842,31 @@ class AdminNavbar extends React.Component {
                       className="input-header" />
                   </InputGroup>
                 </div>
+                
               </div>
             </div>
+            {this.state.server_statue ? 
+              <div className="serverbar">
+                <center>
+                  <span>
+                    <i className="fas fa-lightbulb bulbon"></i>
+                  </span>
+                  <span className="serveron-text">
+                    Server ON
+                  </span>
+                </center>
+                
+              </div> : 
+              <div className="serverbar1">
+                <center>
+                  <span>
+                    <i className="fas fa-lightbulb bulboff"></i>
+                  </span>
+                  <span className="serveron-text">
+                    Server OFF
+                  </span>
+                </center>
+              </div>}
           </Container>
         </Navbar>
         <div className="header pt-4" style={{ minHeight: "84vh" }}>
@@ -1056,13 +1052,12 @@ class AdminNavbar extends React.Component {
                   <div className="p-4 w-100 row" >
                     <div className="col-md-10 col-sm-8">
                       <span className="my-scholar">My Scholars</span>
-                      
                       <span className="reload" onClick ={() => this.reload()}><i className="fas fa-redo-alt"></i> Reload</span>
                     </div>
                     <div className="col-md-2 col-sm-4 row">
-                      <Col className="imp_exp">
+                      <Col className="imp_exp" onClick = {() => this.export()}>
                         <span className="pr-2"><i className="fas fa-file-export"></i></span>
-                        Export
+                          Export
                       </Col>
                       <Col className="imp_exp">
                         <span  className="pr-2"><i className="fas fa-file-import"></i></span>
@@ -1087,12 +1082,12 @@ class AdminNavbar extends React.Component {
                         <th scope="col">Manage</th>
                       </tr>
                     </thead>
-                    {this.state.scholar_count === 0 ?
+                    {this.state.data.length === 0 ?
                       <tbody>
                         <tr>
                           <td colSpan="12" className="pl-6">
                             <h4 className="text-blue m-0">
-                              No accounts added. Please add a new scholar to this site
+                              No accounts added. Please add a new scholar to this site.
                             </h4>
                           </td>
                         </tr>

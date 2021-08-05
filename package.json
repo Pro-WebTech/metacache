@@ -47,6 +47,7 @@
     "@fortawesome/fontawesome-free": "5.15.3",
     "axios": "^0.21.1",
     "bootstrap": "4.6.0",
+    "browserify-fs": "^1.0.0",
     "chart.js": "2.9.4",
     "classnames": "2.3.1",
     "fs": "0.0.1-security",

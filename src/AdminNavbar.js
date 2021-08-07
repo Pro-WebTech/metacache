@@ -2,7 +2,9 @@ import React from "react";
 import axios from "axios";
 import Modal from "react-modal";
 import "assets/css/style.css";
-import { SampleData } from "./sample_scholar";
+import "assets/css/sortable-tables.min.css";
+import { SampleData } from "assets/sample_scholar";
+import "assets/sortable-tables";
 import {
   Input,
   InputGroup,
@@ -20,6 +22,7 @@ import {
 
 } from "reactstrap";
 import { isEmptyObject } from "jquery";
+import $ from "jquery";
 
 Modal.setAppElement("#root");
 
@@ -35,14 +38,15 @@ const customStyles = {
     borderRadius: '10px'
   },
 };
-
-
+let fileReader;
 class AdminNavbar extends React.Component {
   constructor(props) {
     super(props);
-    this.handleChange = this.handleChange.bind(this)
-    this.handleScholar = this.handleScholar.bind(this)
+    this.handleRonin = this.handleRonin.bind(this)
+    this.handlePercent = this.handlePercent.bind(this)
     this.handleName = this.handleName.bind(this)
+    this.handleFileChosen = this.handleFileChosen.bind(this)
+    this.handleFileRead = this.handleFileRead.bind(this)
     this.state = {
       data: [],
       server_statue: true,
@@ -72,21 +76,23 @@ class AdminNavbar extends React.Component {
       index_now: ""
     };
   }
-  know_server() {
+  async know_server() {
+
     let status_number=0;
     let count = 0;
     let this_one =  this;
     document.getElementById("cover-spin").style.display = "inherit";
     for (let index = 0; index < SampleData.length; index++) {
-      axios
-        .get('https://api.axie.management/v1/overview/' + SampleData[index].ronin)
+       await axios
+        .get('https://api.lunaciarover.com/stats/' + SampleData[index].ronin)
         .then(function (response) {
+          console.log(response.data)
           count++;
           if (isEmptyObject(!response.data)) {
             status_number++;
           }
           if (count === 10 && status_number < 3) {
-            this_one.setState({server_statue: false});
+            this_one.setState({server_statue: status_number});
           }
         })
         .catch(function (error) {
@@ -97,12 +103,13 @@ class AdminNavbar extends React.Component {
   async componentDidMount(){
     this.know_server();
     let this_one = this;
+    console.log(this.state.server_statue);
     
-    const db_data = (await axios.get('http://localhost:3001/')).data;
+    const db_data = (await axios.get('http://localhost/ronins')).data;
     if (db_data.length !== 0 ) {
       for (let index = 0; index < db_data.length; index++) {
         let ronin = db_data[index].ronin.replace("ronin:", "0x");
-        const response = (await axios.get('https://api.axie.management/v1/overview/' + ronin));
+        const response = (await axios.get('https://api.lunaciarover.com/stats/' + ronin));
         // Calculate scholar count
         this_one.setState({ scholar_count: index + 1 });
           
@@ -125,11 +132,11 @@ class AdminNavbar extends React.Component {
         });
 
         // Calculate total slp
-        const total_one = response.data.slp.total;
+        const total_one = response.data.total_slp;
         const tot_total_one = this_one.state.all_total.total + total_one;
 
         // Calculate claimed slp
-        const claimed = response.data.slp.claimableTotal;
+        const claimed = response.data.ronin_slp;
         const tot_claimed = this_one.state.all_total.ronin_slp + claimed;
 
         // Calculate unclaimed slp
@@ -137,7 +144,7 @@ class AdminNavbar extends React.Component {
         const tot_unclaimed = this_one.state.all_total.unclaimed + unclaimed;
 
         // Calculate the last claimed date
-        const timestamp = response.data.slp.lastClaimedItemAt;
+        const timestamp = response.data.last_claim_timestamp;
         const oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
         const today = new Date();
         const last_date = new Date(timestamp * 1000);
@@ -159,7 +166,7 @@ class AdminNavbar extends React.Component {
 
         // Calculate today so far 
         // if today so far is null, return "no result"
-        const today_so = response.data.slp.todaySoFar;
+        const today_so = 1;
         const tot_today_so = this_one.state.all_total.today_so + today_so;
 
         // Calculate the next claim date
@@ -218,27 +225,181 @@ class AdminNavbar extends React.Component {
     }
     else {
       document.getElementById("cover-spin").style.display = "none";
-
     }
   }
-  
-  handleChange = (e) => {
+  handleFileRead = async () => {
+    var file_data = fileReader.result;
+    file_data = JSON.parse(file_data);
+    console.log(typeof file_data, file_data);
+
+    
+    let this_one = this;
+    for (let index = 0; index < file_data.length; index++) {
+      let ronin = file_data[index].eth.replace("ronin:", "0x");
+      if (!this.state.ronin_address_group.includes(file_data[index].eth)) {
+        await axios
+        .get('https://api.lunaciarover.com/stats/' + ronin)
+        .then(function (response) {
+            // Add name to the name_group
+            let new_name = file_data[index].name;
+            this_one.setState(state => {
+              const name_group = state.name_group.concat(new_name);
+              return {
+                name_group
+              };
+            });
+
+            // Add ronin_address to the ronin_address_group
+            let new_ronin_address = file_data[index].eth;
+            this_one.setState(state => {
+              const ronin_address_group = state.ronin_address_group.concat(new_ronin_address);
+              return {
+                ronin_address_group
+              };
+            });
+
+            // Calculate scholar count
+            this_one.setState({ scholar_count: index + 1 });
+
+            console.log(response, response.data.slp);
+            // Calculate total slp
+            const total_one = response.data.total_slp;
+            const tot_total_one = this_one.state.all_total.total + total_one;
+
+            // Calculate claimed slp
+            const claimed = response.data.ronin_slp;
+            const tot_claimed = this_one.state.all_total.ronin_slp + claimed;
+
+            // Calculate unclaimed slp
+            const unclaimed = total_one - claimed;
+            const tot_unclaimed = this_one.state.all_total.unclaimed + unclaimed;
+
+            // Calculate the last claimed date
+            const timestamp = response.data.last_claim_timestamp;
+            const oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
+            const today = new Date();
+            const last_date = new Date(timestamp * 1000);
+            const last_claimed_date = last_date.toLocaleDateString();
+
+            // // Calculate average slp 
+            const diffDays = Math.ceil(Math.abs((today - last_date + 1) / oneDay));
+            const avg_slp = Math.floor(unclaimed / diffDays);
+            const tot_avg_slp = this_one.state.all_total.tot_avg + avg_slp;
+            const real_avg_slp = Math.floor(tot_avg_slp / (index + 1));
+
+            // Calculate manager
+            const manager = Math.round(total_one / file_data[index].managerShare);
+            const tot_manager = this_one.state.all_total.manager + manager;
+
+            // Calculate scholar
+            const scholar = total_one - manager;
+            const tot_scholar = this_one.state.all_total.scholar  + scholar;
+
+            // Calculate today so far 
+            // if today so far is null, return "no result"
+            const today_so = 1;
+            const tot_today_so = this_one.state.all_total.today_so  + today_so;
+
+            // Calculate the next claim date
+            const next_date_ready = new Date(last_date.setDate(last_date.getDate() + 14));
+            const next_claim_date = next_date_ready.toLocaleDateString();
+
+            // Get the elo
+            var elo;
+            if (response.data.leaderboard == null) {
+              elo = 0
+            }
+            else {
+              elo = response.data.leaderboard.elo;
+            }
+
+            // Make array Data
+
+            const new_data = {
+              "name": file_data[index].name,
+              "ronin": file_data[index].ronin,
+              "avg": avg_slp,
+              "today_so": today_so,
+              "elo": elo,
+              "last_claim": last_claimed_date,
+              "next_claim": next_claim_date,
+              "unclaimed": unclaimed,
+              "ronin_slp": claimed,
+              "scholar": scholar,
+              "manager": manager,
+              "total": total_one,
+              "percent_manager": file_data[index].managerShare
+            };
+            
+            this_one.setState(state => {
+              const data = state.data.concat(new_data);
+              return {
+                data
+              };
+            });
+            
+            // Total object for all values
+            const new_total = {
+              "avg": real_avg_slp,
+              "tot_avg": tot_avg_slp,
+              "today_so": tot_today_so,
+              "unclaimed": tot_unclaimed,
+              "ronin_slp": tot_claimed,
+              "scholar": tot_scholar,
+              "manager": tot_manager,
+              "total": tot_total_one
+            }
+            this_one.setState({ all_total: new_total });
+            if (index === file_data.length -1) {
+              document.getElementById("cover-spin").style.display = "none";
+
+            }
+            // document.getElementsByClassName("input-header").style.display = "none";
+        })
+        .catch(function (error) {
+          alert("No response!")
+          document.getElementById("cover-spin").style.display = "none";
+          var elements = document.getElementsByClassName('input-header');
+            Array.prototype.slice.call(elements).forEach(function(el) {
+              el.value = '';
+            });
+            [...elements].forEach(el => {
+              el.value = '';
+          });
+          console.log(error);
+        }); 
+
+        await axios 
+        .post('http://localhost/add-new', { name: file_data[index].name, ronin: file_data[index].eth, percent_manager: file_data[index].managerShare})
+        .then(function (response) {
+          alert(response.data);
+        })
+      }
+       
+    }
+  }
+  handleFileChosen = (file) => {
+    fileReader = new FileReader();
+    fileReader.onloadend = this.handleFileRead;
+    fileReader.readAsText(file);
+  }
+  handleRonin = (e) => {
     this.setState({ ronin_address: e.target.value });
   };
-  handleScholar = (e) => {
+  handlePercent = (e) => {
     this.setState({ percent: e.target.value });
   };
   handleName = (e) => {
     this.setState({ name: e.target.value });
   };
 
-  cg_name = (e) => {
+  change_name = (e) => {
     this.setState({ name_now: e.target.value });
   };
-  cg_ronin = (e) => {
+  change_ronin = (e) => {
     this.setState({ ronin_now: e.target.value });
   }
-  cg_mn_pcent = (e) => {
+  change_percent = (e) => {
     this.setState({ manager_percent_now: e.target.value });
   }
   // When you click the add scholar button
@@ -262,14 +423,17 @@ class AdminNavbar extends React.Component {
 
       ronin = ronin.replace("ronin:", "0x")
       axios
-        .get('https://api.axie.management/v1/overview/' + ronin)
+        .get('https://api.lunaciarover.com/stats/' + ronin)
         .then(function (response) {
-          if (response.data.slp.lastClaimedItemAt === 0) {
-            alert("Wrong input data! Try again")
-            document.getElementById("cover-spin").style.display = "none";
+          console.log(response.data);
+          if (response.data)
+          // (response.data.last_claim_timestamp === 0) {
+          //   alert("Wrong input data! Try again")
+          //   document.getElementById("cover-spin").style.display = "none";
 
-          }
-          else {
+          // }
+          // else
+           {
             // Add name to the name_group
             let new_name = this_one.state.name;
             this_one.setState(state => {
@@ -295,12 +459,12 @@ class AdminNavbar extends React.Component {
             this_one.setState({ scholar_count: scholar_count });
 
             // Calculate total slp
-            let total_one = response.data.slp.total;
+            let total_one = response.data.total_slp;
             let tot_total_one = this_one.state.all_total.total + total_one;
 
 
             // Calculate claimed slp
-            let claimed = response.data.slp.claimableTotal;
+            let claimed = response.data.ronin_slp;
             let tot_claimed = this_one.state.all_total.ronin_slp + claimed;
 
             // Calculate unclaimed slp
@@ -308,7 +472,7 @@ class AdminNavbar extends React.Component {
             let tot_unclaimed = this_one.state.all_total.unclaimed + unclaimed;
 
             // Calculate the last claimed date
-            let timestamp = response.data.slp.lastClaimedItemAt;
+            let timestamp = response.data.last_claim_timestamp;
             let oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
             let today = new Date();
             let last_date = new Date(timestamp * 1000);
@@ -331,7 +495,7 @@ class AdminNavbar extends React.Component {
 
             // Calculate today so far 
             // if today so far is null, return "no result"
-            let today_so = response.data.slp.todaySoFar;
+            let today_so = 1;
             let tot_today_so = this_one.state.all_total.today_so + today_so;
 
             // Calculate the next claim date
@@ -354,7 +518,7 @@ class AdminNavbar extends React.Component {
             ronin = ronin.replace("0x", "ronin:")
 
             axios 
-              .post('http://localhost:3001/add-new', { name: new_name, ronin: ronin, percent_manager: percent_manager})
+              .post('http://localhost/add-new', { name: new_name, ronin: ronin, percent_manager: percent_manager})
               .then(function (response) {
                 alert(response.data);
               })
@@ -432,7 +596,7 @@ class AdminNavbar extends React.Component {
       let ronin = data[index].ronin.replace("ronin:", "0x");
       
       await axios
-        .get('https://api.axie.management/v1/overview/' + ronin)
+        .get('https://api.lunaciarover.com/stats/' + ronin)
         .then(function (response) {
 
 
@@ -440,11 +604,11 @@ class AdminNavbar extends React.Component {
             this_one.setState({ scholar_count: index + 1 });
 
             // Calculate total slp
-            const total_one = response.data.slp.total;
+            const total_one = response.data.total_slp;
             const tot_total_one = this_one.state.all_total.total - this_one.state.data[index].total + total_one;
 
             // Calculate claimed slp
-            const claimed = response.data.slp.claimableTotal;
+            const claimed = response.data.ronin_slp;
             const tot_claimed = this_one.state.all_total.ronin_slp - this_one.state.data[index].ronin_slp + claimed;
 
             // Calculate unclaimed slp
@@ -452,7 +616,7 @@ class AdminNavbar extends React.Component {
             const tot_unclaimed = this_one.state.all_total.unclaimed - this_one.state.data[index].unclaimed + unclaimed;
 
             // Calculate the last claimed date
-            const timestamp = response.data.slp.lastClaimedItemAt;
+            const timestamp = response.data.last_claim_timestamp;
             const oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
             const today = new Date();
             const last_date = new Date(timestamp * 1000);
@@ -474,7 +638,7 @@ class AdminNavbar extends React.Component {
 
             // Calculate today so far 
             // if today so far is null, return "no result"
-            const today_so = response.data.slp.todaySoFar;
+            const today_so = 1;
             const tot_today_so = this_one.state.all_total.today_so - this_one.state.data[index].today_so + today_so;
 
             // Calculate the next claim date
@@ -577,9 +741,9 @@ class AdminNavbar extends React.Component {
       let this_one = this;
       let scholar_count = this.state.scholar_count;
       axios
-        .get('https://api.axie.management/v1/overview/' + ronin)
+        .get('https://api.lunaciarover.com/stats/' + ronin)
         .then(function (response) {
-          if (response.data.slp.lastClaimedItemAt === 0) {
+          if (response.data.last_claim_timestamp === 0) {
             alert("Wrong input data! Try again")
           }
           else {
@@ -594,7 +758,7 @@ class AdminNavbar extends React.Component {
             // Add ronin_address to the ronin_address_group
             ronin = ronin.replace("0x", "ronin:")
             console.log(name, this_one.state.data[e].name);
-            axios.post("http://localhost:3001/edit-ronin/", {name: name, ronin: ronin, percent: manager_p, old_name: this_one.state.data[e].name})
+            axios.post("http://localhost/edit-ronin/", {name: name, ronin: ronin, percent: manager_p, old_name: this_one.state.data[e].name})
                   .then(function (response) {
                     console.log(response)
                   })
@@ -604,11 +768,11 @@ class AdminNavbar extends React.Component {
             console.log(name_group, ronin_address_group);
 
             // Calculate total slp
-            let total_one = response.data.slp.total;
+            let total_one = response.data.total_slp;
             let tot_total_one = this_one.state.all_total.total - this_one.state.data[e].total + total_one;
 
             // Calculate claimed slp
-            let claimed = response.data.slp.claimableTotal;
+            let claimed = response.data.ronin_slp;
             let tot_claimed = this_one.state.all_total.ronin_slp - this_one.state.data[e].ronin_slp + claimed;
 
             // Calculate unclaimed slp
@@ -616,7 +780,7 @@ class AdminNavbar extends React.Component {
             let tot_unclaimed = this_one.state.all_total.unclaimed - this_one.state.data[e].unclaimed + unclaimed;
 
             // Calculate the last claimed date
-            let timestamp = response.data.slp.lastClaimedItemAt;
+            let timestamp = response.data.last_claim_timestamp;
             let oneDay = 24 * 60 * 60 * 1000; // hours*minutes*seconds*milliseconds
             let today = new Date();
             let last_date = new Date(timestamp * 1000);
@@ -638,7 +802,7 @@ class AdminNavbar extends React.Component {
 
             // Calculate today so far 
             // if today so far is null, return "no result"
-            let today_so = response.data.slp.todaySoFar;
+            let today_so = 1;
             let tot_today_so = this_one.state.all_total.today_so - this_one.state.data[e].today_so + today_so;
 
             // Calculate the next claim date
@@ -712,7 +876,7 @@ class AdminNavbar extends React.Component {
   delete_one(e) {
     // Catch the whole data from state
     let data = this.state.data;
-    axios.post('http://localhost:3001/delete-user',{name: data[e].name})
+    axios.post('http://localhost/delete-user',{name: data[e].name})
          .then(function (response) {
            alert(response.data);
          })
@@ -764,31 +928,47 @@ class AdminNavbar extends React.Component {
     this.setState({ scholar_count: scholar_count - 1 });
     this.setState({ data: data });
   }
-
-  export() {
-    var data = this.state.data;
-    var list = [];
-    console.log(data);
-    data.map((object, index) => {
-      list.push({
-        managerShare: object.percent_manager,
-        eth: object.ronin,
-        name: object.name
-      })
+  
+  apihelperdownload() {
+    return axios.post('http://localhost/download').then(function (response) {
+      return response;
+  
     })
-    var json_data = JSON.stringify(list, null, 2);
-    console.log(json_data);
-    const aTag = document.createElement('a');
-    aTag.href = list;
-    aTag.download = "axie.management.export."+ new Date().getUTCMilliseconds();
-    let event = new MouseEvent('click');
-    aTag.dispatchEvent(event);
-    // fs.writeFile("axie.management.export"+ new Date().getUTCMilliseconds(), json_data, (err) => {
-    //   if (err) throw err;
-    //   console.log('Data written to file');
-    // });
+  }
+  downloadFile() {
+    this.apihelperdownload().then(
+      (res) => {
+          var timestamp = "axie.management.export." + Math.floor(Math.random() * Math.pow(10, 16));
+          var data_to_convert = res.data;
+          var i;
+          for(i = 0; i < data_to_convert.length; i++){
+            data_to_convert[i].eth = data_to_convert[i]['ronin'];
+            data_to_convert[i].managerShare = data_to_convert[i]['percent_manager'];
+            delete data_to_convert[i].ronin;
+            delete data_to_convert[i].percent_manager;
+          }
+          var export_data = JSON.stringify(data_to_convert.map(({id, ...item}) => item));
+
+          // const url = window.URL.createObjectURL(new Blob([JSON.stringify(res.data)]));
+          const url = window.URL.createObjectURL(new Blob([export_data]));
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', timestamp + ".json");
+          document.body.appendChild(link);
+          link.click();
+      },
+      (error) => {
+          alert("Something went wrong");
+      }
+  )
+  }
+
+  import() {
+    $('input[type=file]').trigger('click');
+
   }
   render() {
+    console.log(this.state.data, this.state.server_statue);
     var table_data = this.state.data.map((anObjectMapped, index) => {
       return (
         <tr key={index}>
@@ -831,13 +1011,13 @@ class AdminNavbar extends React.Component {
                   <div className="mb-0 w-50 ml-5">
                     <InputGroup className="input-group-alternative w-80 pl-4" >
                       <Input placeholder="Manager percentage" className="input-m-percent"
-                        type="number" max={100} min={1} onChange={this.handleScholar} />
+                        type="number" max={100} min={1} onChange={this.handlePercent} />
                     </InputGroup>
                   </div>
                 </div>
                 <div className="mb-0 w-80 mt-2">
                   <InputGroup className="input-group-alternative w-100 pl-4" >
-                    <Input placeholder="Ronin Wallet" type="text" onChange={this.handleChange}
+                    <Input placeholder="Ronin Wallet" type="text" onChange={this.handleRonin}
                       className="input-header" />
                   </InputGroup>
                 </div>
@@ -1054,31 +1234,32 @@ class AdminNavbar extends React.Component {
                       <span className="reload" onClick ={() => this.reload()}><i className="fas fa-redo-alt"></i> Reload</span>
                     </div>
                     <div className="col-md-2 col-sm-4 row">
-                      <Col className="imp_exp" onClick = {() => this.export()}>
+                      <Col className="imp_exp" onClick = {() => this.downloadFile()}>
                         <span className="pr-2"><i className="fas fa-file-export"></i></span>
                           Export
                       </Col>
-                      <Col className="imp_exp">
-                        <span  className="pr-2"><i className="fas fa-file-import"></i></span>
-                        Import
+                      <Col className="imp_exp" onClick = {() => this.import()}>
+                        <Input type="file" className="upload_file" onChange= {e => this.handleFileChosen(e.target.files[0])} ref={input => this.inputElement = input}/>
+                          <span  className="pr-2"><i className="fas fa-file-import"></i></span>
+                          Import
                       </Col>
                     </div>
                   </div>
-                  <Table className="align-items-center table-flush tableSorter" responsive>
+                  <Table className="align-items-center table-flush tableSorter sortable-table" responsive>
                     <thead className="thead-light">
-                      <tr>
-                        <th scope="col">Name</th>
-                        <th scope="col">AVG</th>
-                        <th scope="col">Today SLP</th>
-                        <th scope="col">Elo</th>
-                        <th scope="col">Last claim</th>
-                        <th scope="col">Next claim</th>
-                        <th scope="col">Unclaimed</th>
-                        <th scope="col">Ronin SLP</th>
-                        <th scope="col">Scholar</th>
-                        <th scope="col">Manager</th>
-                        <th scope="col">Total</th>
-                        <th scope="col">Manage</th>
+                      <tr> 
+                        <th scope="col" className="numeric-sort">Name</th>
+                        <th scope="col" className="numeric-sort">AVG</th>
+                        <th scope="col" className="numeric-sort">Today SLP</th>
+                        <th scope="col" className="numeric-sort">Elo</th>
+                        <th scope="col" className="numeric-sort">Last claim</th>
+                        <th scope="col" className="numeric-sort">Next claim</th>
+                        <th scope="col" className="numeric-sort">Unclaimed</th>
+                        <th scope="col" className="numeric-sort">Ronin SLP</th>
+                        <th scope="col" className="numeric-sort">Scholar</th>
+                        <th scope="col" className="numeric-sort">Manager</th>
+                        <th scope="col" className="numeric-sort">Total</th>
+                        <th scope="col" className="numeric-sort">Manage</th>
                       </tr>
                     </thead>
                     {this.state.data.length === 0 ?
@@ -1105,12 +1286,12 @@ class AdminNavbar extends React.Component {
                 <i className="fas fa-times-circle fa-lg"></i>
               </span>
               <h3 className="text-white mt-4">Scholar name or account name</h3>
-              <Input type="text" className="input-modal" value={this.state.name_now} onChange={this.cg_name} />
+              <Input type="text" className="input-modal" value={this.state.name_now} onChange={this.change_name} />
               <h3 className="text-white mt-3">Public ronin address with prefix ronin</h3>
-              <Input type="text" className="input-modal" value={this.state.ronin_now} onChange={this.cg_ronin} />
+              <Input type="text" className="input-modal" value={this.state.ronin_now} onChange={this.change_ronin} />
               <h3 className="text-white mt-3">Manager percentage</h3>
               <Input type="number" max={100} min={1} className="input-modal"
-                value={this.state.manager_percent_now} onChange={this.cg_mn_pcent} />
+                value={this.state.manager_percent_now} onChange={this.change_percent} />
               <center>
                 <Button className="mt-4" onClick={() => this.edit_complete(this.state.index_now)}>
                   <span className="m-2 close-span">

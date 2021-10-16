@@ -50,7 +50,6 @@ gulp.task("licenses", async function () {
     )
     .pipe(gulp.dest("./", { overwrite: true }));
 
-  // this is to add Creative Tim licenses in the production mode for the minified css
   gulp
     .src("build/static/css/*chunk.css", { base: "./" })
     .pipe(
@@ -75,3 +74,4 @@ gulp.task("licenses", async function () {
     .pipe(gulp.dest("./", { overwrite: true }));
   return;
 });
+
